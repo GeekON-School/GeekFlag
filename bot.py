@@ -3,6 +3,8 @@ import telebot
 import requests
 import random
 import sqlite3
+import time
+from threading import Thread
 
 
 names = ['name1', 'name2', 'name3', 'name4', 'name5', 'name6', 'name7', 'name8', 'name9']
@@ -19,7 +21,8 @@ def start_handler(message):
     user_id = message.chat.id
 
     cur.execute('SELECT COUNT(*) FROM users WHERE id = ?', [user_id])
-    if cur.fetchone()[0] == 0:
+    if cur.fetchone()[0] != 0:
+        bot.send_message(user_id, "Вы уже играете!")
         return
     while True:
         name = random.choice(names)
@@ -31,6 +34,55 @@ def start_handler(message):
     print('registered new user - {}, {}'.format(user_id, name))
 
     bot.send_message(user_id, "Добро пожаловать в игру, {}! Присылай фото с QR кодом!".format(name))
+
+    con.commit()
+    con.close()
+
+
+@bot.message_handler(commands=['tower_stats'])
+def start_handler(message):
+    con = sqlite3.connect('database.sqlite')
+    cur = con.cursor()
+
+    user_id = message.chat.id
+
+    text = "Статистика по башням:\n\n"
+
+    cur.execute('SELECT * FROM towers')
+    towers = cur.fetchall()
+
+    for tower in towers:
+        text += "'{}' - ".format(tower[0])
+        if tower[1] is None:
+            text += 'не захвачено'
+        else:
+            cur.execute('SELECT * FROM users WHERE id = ?', [tower[1]])
+            owner = cur.fetchone()
+            text += owner[1]
+        text += '\n'
+
+    bot.send_message(user_id, text)
+
+    con.commit()
+    con.close()
+
+
+@bot.message_handler(commands=['player_stats'])
+def start_handler(message):
+    con = sqlite3.connect('database.sqlite')
+    cur = con.cursor()
+
+    user_id = message.chat.id
+
+    text = "Статистика по игрокам:\n\n"
+
+    cur.execute('SELECT * FROM users')
+    users = cur.fetchall()
+
+    for user in users:
+        text += "{}: {}\n".format(user[1], user[0])
+
+    bot.send_message(user_id, text)
 
     con.commit()
     con.close()
@@ -161,6 +213,7 @@ def answer_handler(message):
 
     cur.execute('UPDATE users SET current_task = ? WHERE id = ?', [None, user_id,])
     cur.execute('UPDATE users SET current_tower = ? WHERE id = ?', [None, user_id])
+    cur.execute('UPDATE users SET tasks_solved = ? WHERE id = ?', [user[3]+1, user_id])
 
     con.commit()
 
@@ -168,13 +221,58 @@ def answer_handler(message):
         bot.send_message(user_id, "Ответ неверен. Башня '{}' для вас временно заблокирована. "
                                   "Попробуйте захватить другую башню или подождите.".format(tower[0]))
         cur.execute('INSERT INTO blocks (user, tower) VALUES (?,?)', [user_id, tower_id])
+        con.commit()
         return
 
     bot.send_message(user_id, "Ответ принят! Вы захватили башню '{}'.".format(tower[0]))
     cur.execute('UPDATE towers SET owner = ? WHERE id = ?', [user_id, tower_id])
+    cur.execute('INSERT INTO solutions (user, task, result, tower) VALUES (?,?,?,?)', [user_id, task_id, 1, tower_id])
+
+    cur.execute('SELECT * FROM users')
+    users = cur.fetchall()
+    for row in users:
+        if row[4] != user_id:
+            bot.send_message(row[4], "Игрок {} захватил башню '{}'!".format(row[1], tower[0]))
 
     con.commit()
     con.close()
 
+
+def blocks_observer():
+    while True:
+        time.sleep(60*5)
+        con = sqlite3.connect('database.sqlite')
+        cur = con.cursor()
+        cur.execute('DELETE FROM blocks')
+
+        cur.execute('SELECT * FROM users')
+        users = cur.fetchall()
+        for row in users:
+            bot.send_message(row[4], "Все блокировки сняты!")
+
+        con.commit()
+        con.close()
+
+def points_observer():
+    while True:
+        time.sleep(30)
+        con = sqlite3.connect('database.sqlite')
+        cur = con.cursor()
+        cur.execute('SELECT * FROM towers')
+        towers = cur.fetchall()
+        for row in towers:
+            if row[1] != None:
+                cur.execute('SELECT * FROM users WHERE id = ?', [row[1]])
+                user = cur.fetchone()
+                cur.execute('UPDATE users SET points = ? WHERE id = ?', [user[0]+5, user[4]])
+
+        con.commit()
+        con.close()
+
+blocks_thread = Thread(target=blocks_observer)
+blocks_thread.start()
+
+points_thread = Thread(target=points_observer)
+points_thread.start()
 
 bot.polling(none_stop=True)
