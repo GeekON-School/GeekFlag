@@ -7,7 +7,10 @@ import time
 from threading import Thread
 
 
-names = ['name1', 'name2', 'name3', 'name4', 'name5', 'name6', 'name7', 'name8', 'name9']
+names = ['Илон Маск', 'Герман Греф', 'Михаил Круг',
+         'Олег Тиньков', 'Билл Гейтс', 'Марк Цукерберг',
+         'Павел Дуров', 'Тим Кук', 'Стив Джобс',
+         'Гейб Ньюелл', 'Анатолий Чубайс', 'Юрий Дудь', 'Тина Канделаки', 'Леонид Якубович']
 
 bot = telebot.TeleBot(config.token)
 
@@ -232,7 +235,7 @@ def answer_handler(message):
     users = cur.fetchall()
     for row in users:
         if row[4] != user_id:
-            bot.send_message(row[4], "Игрок {} захватил башню '{}'!".format(row[1], tower[0]))
+            bot.send_message(row[4], "Игрок {} захватил башню '{}'!".format(user[1], tower[0]))
 
     con.commit()
     con.close()
