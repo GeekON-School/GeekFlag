@@ -10,7 +10,7 @@ from threading import Thread
 names = ['Илон Маск', 'Герман Греф', 'Михаил Круг',
          'Олег Тиньков', 'Билл Гейтс', 'Марк Цукерберг',
          'Павел Дуров', 'Тим Кук', 'Стив Джобс',
-         'Гейб Ньюелл', 'Анатолий Чубайс', 'Юрий Дудь', 'Тина Канделаки', 'Леонид Якубович']
+         'Гейб Ньюелл', 'Анатолий Чубайс', 'Юрий Дудь', 'Тина Канделаки', 'Леонид Якубович', 'Владимир Путин', 'Лунтик', 'Стив Возниак', 'Альберт Эйнштейн']
 
 bot = telebot.TeleBot(config.token)
 
@@ -232,29 +232,35 @@ def answer_handler(message):
     cur.execute('INSERT INTO solutions (user, task, result, tower) VALUES (?,?,?,?)', [user_id, task_id, 1, tower_id])
 
     cur.execute('SELECT * FROM users')
-    users = cur.fetchall()
-    for row in users:
-        if row[4] != user_id:
-            bot.send_message(row[4], "Игрок {} захватил башню '{}'!".format(user[1], tower[0]))
-
+    try:
+        users = cur.fetchall()
+        for row in users:
+            if row[4] != user_id:
+                bot.send_message(row[4], "Игрок {} захватил башню '{}'!".format(user[1], tower[0]))
+    except Exception as e:
+        print(e)
     con.commit()
     con.close()
 
 
+
 def blocks_observer():
     while True:
-        time.sleep(60*5)
         con = sqlite3.connect('database.sqlite')
         cur = con.cursor()
         cur.execute('DELETE FROM blocks')
 
         cur.execute('SELECT * FROM users')
         users = cur.fetchall()
-        for row in users:
-            bot.send_message(row[4], "Все блокировки сняты!")
+        try:
+            for row in users:
+                bot.send_message(row[4], "Все блокировки сняты!")
+        except:
+            pass
 
         con.commit()
         con.close()
+        time.sleep(3*60)
 
 def points_observer():
     while True:
@@ -272,10 +278,28 @@ def points_observer():
         con.commit()
         con.close()
 
+def stop_game():
+        con = sqlite3.connect('database.sqlite')
+        cur = con.cursor()
+        cur.execute('SELECT * FROM users')
+        users = cur.fetchall()
+        for row in users:
+            try:
+
+                bot.send_message(row[4], "Игра закончилась, вернитесь в кабинет")
+                print("sent to {0}".format(row[4]))
+            except:
+                pass
+
+
 blocks_thread = Thread(target=blocks_observer)
 blocks_thread.start()
 
 points_thread = Thread(target=points_observer)
 points_thread.start()
+
+# points_thread = Thread(target=stop_game)
+# points_thread.start()
+
 
 bot.polling(none_stop=True)
