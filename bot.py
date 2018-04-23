@@ -1,24 +1,29 @@
-import config
+from config import *
 import telebot
 import requests
 import random
 import sqlite3
 import time
-from threading import Thread
+from threading import Thread, Event
 
-
-names = ['Илон Маск', 'Герман Греф', 'Михаил Круг',
+NAMES = ['Илон Маск', 'Герман Греф', 'Михаил Круг',
          'Олег Тиньков', 'Билл Гейтс', 'Марк Цукерберг',
          'Павел Дуров', 'Тим Кук', 'Стив Джобс',
-         'Гейб Ньюелл', 'Анатолий Чубайс', 'Юрий Дудь', 'Тина Канделаки', 'Леонид Якубович', 'Владимир Путин', 'Лунтик', 'Стив Возниак', 'Альберт Эйнштейн']
+         'Гейб Ньюелл', 'Анатолий Чубайс', 'Юрий Дудь', 'Тина Канделаки',
+        'Леонид Якубович', 'Владимир Путин', 'Лунтик', 'Стив Возняк', 'Альберт Эйнштейн']
 
-bot = telebot.TeleBot(config.token)
+if TOKEN:
+    bot = telebot.TeleBot(TOKEN)
+else:
+    print("Set your bot's token in config.py")
+    exit()
 
+killer = Event()
 
 # start the game
 @bot.message_handler(commands=['start', 'help'])
 def start_handler(message):
-    con = sqlite3.connect('database.sqlite')
+    con = sqlite3.connect(DB)
     cur = con.cursor()
 
     user_id = message.chat.id
@@ -28,12 +33,12 @@ def start_handler(message):
         bot.send_message(user_id, "Вы уже играете!")
         return
     while True:
-        name = random.choice(names)
+        name = random.choice(NAMES)
         cur.execute('SELECT COUNT(*) FROM users WHERE name = ?', [name])
         if cur.fetchone()[0] == 0:
             break
 
-    cur.execute('INSERT INTO users (points, name, tasks_solved, id) VALUES (?,?,?,?)', [0,name,0,user_id])
+    cur.execute('INSERT INTO users (points, name, tasks_solved, id) VALUES (?,?,?,?)', [0, name, 0, user_id])
     print('registered new user - {}, {}'.format(user_id, name))
 
     bot.send_message(user_id, "Добро пожаловать в игру, {}! Присылай фото с QR кодом!".format(name))
@@ -43,8 +48,8 @@ def start_handler(message):
 
 
 @bot.message_handler(commands=['tower_stats'])
-def start_handler(message):
-    con = sqlite3.connect('database.sqlite')
+def tower_stats_handler(message):
+    con = sqlite3.connect(DB)
     cur = con.cursor()
 
     user_id = message.chat.id
@@ -71,8 +76,8 @@ def start_handler(message):
 
 
 @bot.message_handler(commands=['player_stats'])
-def start_handler(message):
-    con = sqlite3.connect('database.sqlite')
+def player_stats_handler(message):
+    con = sqlite3.connect(DB)
     cur = con.cursor()
 
     user_id = message.chat.id
@@ -112,7 +117,7 @@ def select_task(cur, user_id):
 #process photo
 @bot.message_handler(content_types=['photo'])
 def task_handler(message):
-    con = sqlite3.connect('database.sqlite')
+    con = sqlite3.connect(DB)
     cur = con.cursor()
 
     user_id = message.chat.id
@@ -134,7 +139,7 @@ def task_handler(message):
     con.commit()
 
     path = bot.get_file(file_id)
-    p = 'https://api.telegram.org/file/bot{0}/'.format(config.token) + path.file_path
+    p = 'https://api.telegram.org/file/bot{0}/'.format(TOKEN) + path.file_path
     url = 'http://api.qrserver.com/v1/read-qr-code/'
     res = requests.post(url, {'fileurl': p})
     try:
@@ -170,12 +175,12 @@ def task_handler(message):
             return
 
         cur.execute('SELECT * FROM tasks WHERE id = ?', [task_id])
-        task = cur.fetchone()
-
+        task = cur.fetchone()[4]
+        task = '```python\n' + task + '\n```'
         cur.execute('UPDATE users SET current_task = ? WHERE id = ?', [task_id, user_id])
         cur.execute('UPDATE users SET current_tower = ? WHERE id = ?', [tower_id, user_id])
 
-        bot.send_message(user_id, "Вы атакуете башню '{}'. Ваше задание: {}.".format(tower_name, task[1]))
+        bot.send_message(user_id, f"Вы атакуете башню '{tower_name}'. Ваше задание:\n{task}", parse_mode='markdown')
     except Exception as e:
         print(e)
         bot.send_message(user_id, "На картинке не видно QR кода. Попробуй еще раз.")
@@ -185,12 +190,10 @@ def task_handler(message):
 
 @bot.message_handler(content_types=['text'])
 def answer_handler(message):
-    con = sqlite3.connect('database.sqlite')
+    con = sqlite3.connect(DB)
     cur = con.cursor()
 
     user_id = message.chat.id
-
-
 
     cur.execute('SELECT * FROM users WHERE id = ?', [user_id])
     results = cur.fetchall()
@@ -244,9 +247,9 @@ def answer_handler(message):
 
 
 
-def blocks_observer():
-    while True:
-        con = sqlite3.connect('database.sqlite')
+def blocks_observer(killer):
+    while not killer.wait(BLOCKING_DELAY):
+        con = sqlite3.connect(DB)
         cur = con.cursor()
         cur.execute('DELETE FROM blocks')
 
@@ -260,12 +263,10 @@ def blocks_observer():
 
         con.commit()
         con.close()
-        time.sleep(3*60)
 
-def points_observer():
-    while True:
-        time.sleep(30)
-        con = sqlite3.connect('database.sqlite')
+def points_observer(killer):
+    while not killer.wait(POINTS_INC_DELAY):
+        con = sqlite3.connect(DB)
         cur = con.cursor()
         cur.execute('SELECT * FROM towers')
         towers = cur.fetchall()
@@ -278,28 +279,77 @@ def points_observer():
         con.commit()
         con.close()
 
-def stop_game():
-        con = sqlite3.connect('database.sqlite')
-        cur = con.cursor()
-        cur.execute('SELECT * FROM users')
-        users = cur.fetchall()
-        for row in users:
-            try:
+def send_stop_messages():
 
-                bot.send_message(row[4], "Игра закончилась, вернитесь в кабинет")
-                print("sent to {0}".format(row[4]))
-            except:
-                pass
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    cur.execute('SELECT * FROM users')
+    users = cur.fetchall()
+    
+    for row in users:
+        try:
+            bot.send_message(row[4], "Игра закончилась, вернитесь в кабинет")
+            print("sent to {0}".format(row[4]))
+        except:
+            pass
 
+def clear_db():
+    with sqlite3.connect(DB) as con:
+        con.execute('UPDATE towers SET owner=null')
+        tables = [
+            'solutions',
+            'users',
+            'submissions',
+            'users',
+            'blocks'
+        ]
+        for table in tables:
+            con.execute(f'DELETE FROM {table}')
+        con.commit()
 
-blocks_thread = Thread(target=blocks_observer)
-blocks_thread.start()
+def bot_poll():
+    bot.polling(none_stop=True)
 
-points_thread = Thread(target=points_observer)
-points_thread.start()
+def stop_bot():
+    killer.set()
+    send_stop_messages()
+    clear_db()
+    bot.stop_polling()
 
-# points_thread = Thread(target=stop_game)
-# points_thread.start()
+def main():
 
+    print(
+        '''
+        > Bot is ready.
+        Enter "start" to start the game or "exit" to exit.
+        During the game, enter "stop" to clean up database and pause bot without exit.
+        Then you can restart the game with "start" command.'''
+        )
 
-bot.polling(none_stop=True)
+    while True:
+        cmd = input()
+
+        if cmd == 'start':
+            print("Starting bot's threads...")
+
+            blocks_thread = Thread(target=blocks_observer, name='blocks', args=(killer,))
+            points_thread = Thread(target=points_observer, name='points', args=(killer,))
+            poll_thread = Thread(target=bot_poll, name='poll')
+
+            points_thread.start()
+            blocks_thread.start()
+            poll_thread.start()
+
+            print('Game started')
+
+        elif cmd == 'stop':
+            stop_bot()
+            print('Bot is suspended. Print start to restart')
+        
+        elif cmd == 'exit':
+            print('Exiting...')
+            stop_bot()
+            break
+
+if __name__ == '__main__':
+    main()
