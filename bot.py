@@ -100,7 +100,7 @@ def select_task(cur, user_id):
     tasks_result = cur.fetchall()
     tasks = []
     for row in tasks_result:
-        tasks.append(row[3])
+        tasks.append(row[0])
 
 
     cur.execute('SELECT * FROM solutions WHERE "user" = ?', [user_id])
@@ -174,8 +174,9 @@ def task_handler(message):
             bot.send_message(user_id, "Похоже, задания закончились")
             return
 
+        print(task_id)
         cur.execute('SELECT * FROM tasks WHERE id = ?', [task_id])
-        task = cur.fetchone()[4]
+        task = cur.fetchone()[3]
         task = '```python\n' + task + '\n```'
         cur.execute('UPDATE users SET current_task = ? WHERE id = ?', [task_id, user_id])
         cur.execute('UPDATE users SET current_tower = ? WHERE id = ?', [tower_id, user_id])
@@ -223,7 +224,7 @@ def answer_handler(message):
 
     con.commit()
 
-    if str(message.text) != str(task[2]):
+    if str(message.text) != str(task[1]):
         bot.send_message(user_id, "Ответ неверен. Башня '{}' для вас временно заблокирована. "
                                   "Попробуйте захватить другую башню или подождите.".format(tower[0]))
         cur.execute('INSERT INTO blocks (user, tower) VALUES (?,?)', [user_id, tower_id])
