@@ -1,4 +1,4 @@
-TOKEN = ''
+TOKEN = '449189512:AAHVmmOAasqCoWq9IHIDwoaZTh7VCzsIqvc'
 DB = 'database.sqlite'
 BLOCKING_DELAY = 3*60
 POINTS_INC_DELAY = 30

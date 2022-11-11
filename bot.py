@@ -30,6 +30,7 @@ def start_handler(message):
 
     cur.execute('SELECT COUNT(*) FROM users WHERE id = ?', [user_id])
     if cur.fetchone()[0] != 0:
+        print(user_id)
         bot.send_message(user_id, "Вы уже играете!")
         return
     while True:
@@ -100,7 +101,7 @@ def select_task(cur, user_id):
     tasks_result = cur.fetchall()
     tasks = []
     for row in tasks_result:
-        tasks.append(row[0])
+        tasks.append(row[2])
 
 
     cur.execute('SELECT * FROM solutions WHERE "user" = ?', [user_id])
@@ -108,6 +109,7 @@ def select_task(cur, user_id):
     solved_tasks = []
     for row in tasks_result:
         solved_tasks.append(row[1])
+
 
     try:
         return random.choice([item for item in tasks if item not in solved_tasks])
@@ -141,6 +143,7 @@ def task_handler(message):
     path = bot.get_file(file_id)
     p = 'https://api.telegram.org/file/bot{0}/'.format(TOKEN) + path.file_path
     url = 'http://api.qrserver.com/v1/read-qr-code/'
+    print(p)
     res = requests.post(url, {'fileurl': p})
     try:
         x = res.json()[0]['symbol'][0]['data']
@@ -266,19 +269,20 @@ def blocks_observer(killer):
         con.close()
 
 def points_observer(killer):
-    while not killer.wait(POINTS_INC_DELAY):
-        con = sqlite3.connect(DB)
-        cur = con.cursor()
-        cur.execute('SELECT * FROM towers')
-        towers = cur.fetchall()
-        for row in towers:
-            if row[1] != None:
-                cur.execute('SELECT * FROM users WHERE id = ?', [row[1]])
-                user = cur.fetchone()
-                cur.execute('UPDATE users SET points = ? WHERE id = ?', [user[0]+5, user[4]])
+    while True:
+        while not killer.wait(POINTS_INC_DELAY):
+            con = sqlite3.connect(DB)
+            cur = con.cursor()
+            cur.execute('SELECT * FROM towers')
+            towers = cur.fetchall()
+            for row in towers:
+                if row[1] != None:
+                    cur.execute('SELECT * FROM users WHERE id = ?', [row[1]])
+                    user = cur.fetchone()
+                    cur.execute('UPDATE users SET points = ? WHERE id = ?', [user[0]+5, user[4]])
 
-        con.commit()
-        con.close()
+            con.commit()
+            con.close()
 
 def send_stop_messages():
 
@@ -314,7 +318,6 @@ def bot_poll():
 def stop_bot():
     killer.set()
     send_stop_messages()
-    clear_db()
     bot.stop_polling()
 
 def main():
@@ -336,6 +339,8 @@ def main():
             blocks_thread = Thread(target=blocks_observer, name='blocks', args=(killer,))
             points_thread = Thread(target=points_observer, name='points', args=(killer,))
             poll_thread = Thread(target=bot_poll, name='poll')
+
+            clear_db()
 
             points_thread.start()
             blocks_thread.start()
