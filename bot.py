@@ -334,13 +334,14 @@ def main():
         cmd = input()
 
         if cmd == 'start':
+            clear_db()
+
+        if cmd == 'start' or cmd == 'continue':
             print("Starting bot's threads...")
 
             blocks_thread = Thread(target=blocks_observer, name='blocks', args=(killer,))
             points_thread = Thread(target=points_observer, name='points', args=(killer,))
             poll_thread = Thread(target=bot_poll, name='poll')
-
-            clear_db()
 
             points_thread.start()
             blocks_thread.start()
