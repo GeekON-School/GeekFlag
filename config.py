@@ -1,4 +1,0 @@
-TOKEN = '449189512:AAFJG3xbrpvxqSPikjbzCk2FPVg5HK7hMgM'
-DB = 'database.sqlite'
-BLOCKING_DELAY = 2*60
-POINTS_INC_DELAY = 30
