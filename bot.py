@@ -1,6 +1,7 @@
 from config import *
 import telebot
-import requests
+import numpy as np
+import cv2
 import random
 import sqlite3
 import time
@@ -141,13 +142,29 @@ def task_handler(message):
     con.commit()
 
     path = bot.get_file(file_id)
-    p = 'https://api.telegram.org/file/bot{0}/'.format(TOKEN) + path.file_path
-    url = 'http://api.qrserver.com/v1/read-qr-code/'
-    print(p)
-    res = requests.post(url, {'fileurl': p})
+    # Download the photo bytes directly from Telegram
+    file_bytes = bot.download_file(path.file_path)
+    # Decode QR code locally using OpenCV
+    img_array = np.frombuffer(file_bytes, dtype=np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
     try:
-        x = res.json()[0]['symbol'][0]['data']
-        x = int(x)
+        if img is None:
+            raise ValueError("Failed to decode image data")
+        detector = cv2.QRCodeDetector()
+        data = ""
+        # Try multi-code first (if multiple QR codes are present)
+        try:
+            retval, decoded_info, points, _ = detector.detectAndDecodeMulti(img)
+            if retval and decoded_info:
+                data = next((d for d in decoded_info if d), "")
+        except Exception:
+            pass
+        if not data:
+            data, points, _ = detector.detectAndDecode(img)
+        if not data:
+            raise ValueError("QR code not detected")
+        data = data.strip()
+        x = int(data)
 
         cur.execute('SELECT * FROM towers WHERE id = ? ', [x])
         towers = cur.fetchall()
